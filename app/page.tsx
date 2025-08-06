@@ -7,12 +7,6 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { ChevronDown, ChevronRight, Plus, Trash2, Eye, EyeOff, Calculator, TrendingUp, X } from 'lucide-react';
 
-// Extend Window interface for Mermaid
-declare global {
-  interface Window {
-    mermaid: any;
-  }
-}
 
 // Type definitions
 interface FormulaMap {
@@ -29,9 +23,9 @@ interface ParsedExpression {
 // AST Node types based on Python parser
 interface ASTNode {
   type: string;
-  left?: any;
-  right?: any;
-  operand?: any;
+  left?: ASTNode | string | number;
+  right?: ASTNode | string | number;
+  operand?: ASTNode | string | number;
 }
 
 interface BinaryOpNode extends ASTNode {
@@ -527,7 +521,7 @@ const RecursiveFormulaTree: React.FC = () => {
         newPath.forEach((name: string) => path.add(name));
         return true;
       }
-      for (let child of node.children) {
+      for (const child of node.children) {
         if (findPath(child, target, newPath)) {
           return true;
         }
@@ -573,7 +567,7 @@ const RecursiveFormulaTree: React.FC = () => {
     if (ast && typeof ast === 'object' && 'type' in ast) {
       let opIndex = 0;
       
-      const buildASTGraph = (node: any, level: number = 1, parentId?: string): string => {
+      const buildASTGraph = (node: ASTNode | string | number, level: number = 1, parentId?: string): string => {
         if (typeof node === 'string') {
           // Variable node
           if (!nodePositions[node]) {
@@ -722,7 +716,7 @@ const RecursiveFormulaTree: React.FC = () => {
       });
       
       // Handle recursive expansion of variable nodes that have formulas
-      const expandNodeRecursively = (nodeId: string, parentPosition: any, level: number, visited: Set<string> = new Set()): void => {
+      const expandNodeRecursively = (nodeId: string, parentPosition: { x: number; y: number; level: number }, level: number, visited: Set<string> = new Set()): void => {
         // Prevent infinite recursion
         if (visited.has(nodeId) || level > 6) return;
         visited.add(nodeId);
@@ -741,7 +735,7 @@ const RecursiveFormulaTree: React.FC = () => {
         const subLevelNodes: { [level: number]: string[] } = {};
         const subNodePositions: { [nodeId: string]: { x: number; y: number; level: number } } = {};
         
-        const buildSubAST = (subNode: any, subLevel: number = 1): string => {
+        const buildSubAST = (subNode: ASTNode | string | number, subLevel: number = 1): string => {
           if (typeof subNode === 'string') {
             // Variable node
             const fullId = `${nodeId}_${subNode}`;
