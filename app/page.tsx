@@ -1,92 +1,15 @@
 'use client'
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { ChevronDown, ChevronRight, Plus, Trash2, Eye, EyeOff, Calculator, TrendingUp, X } from 'lucide-react';
-
-
-// Type definitions
-interface FormulaMap {
-  [key: string]: string;
-}
-
-interface ParsedExpression {
-  variables: string[];
-  operators: string[];
-  tokens: string[];
-  ast?: ASTNode;
-}
-
-// AST Node types based on Python parser
-interface ASTNode {
-  type: string;
-  left?: ASTNode | string | number;
-  right?: ASTNode | string | number;
-  operand?: ASTNode | string | number;
-}
-
-interface BinaryOpNode extends ASTNode {
-  type: 'Add' | 'Subtract' | 'Multiply' | 'Divide' | 'Power';
-  left: ASTNode | string | number;
-  right: ASTNode | string | number;
-}
-
-interface UnaryOpNode extends ASTNode {
-  type: string; // e.g., 'Unary_USub', 'Unary_UAdd'
-  operand: ASTNode | string | number;
-}
-
-interface TreeNode {
-  name: string;
-  type: 'formula' | 'leaf' | 'circular';
-  expression?: string;
-  operators?: string[];
-  children: TreeNode[];
-  depth: number;
-}
-
-interface GraphNode {
-  id: string;
-  label: string;
-  type: 'variable' | 'operation' | 'result';
-  x: number;
-  y: number;
-}
-
-interface GraphEdge {
-  id: string;
-  from: string;
-  to: string;
-  type: 'input' | 'output' | 'direct';
-  operation?: string;
-}
-
-interface ExpressionGraph {
-  nodes: GraphNode[];
-  edges: GraphEdge[];
-}
-
-interface Operation {
-  id: string;
-  operation: string;
-  leftVar: string;
-  rightVar: string;
-  x: number;
-  y: number;
-}
-
-interface DerivativesModalProps {
-  formulaName: string;
-  onClose: () => void;
-}
-
-interface TreeNodeProps {
-  node: TreeNode;
-  level?: number;
-}
+import { SolutionConfiguration } from './type/types';
+import { FormulaMap, ParsedExpression, ASTNode, TreeNode, GraphNode, GraphEdge, ExpressionGraph, DerivativesModalProps, TreeNodeProps } from './type/types';
+import { FormulaParser } from '@/lib/parser';
+import { SolutionConfigurationPages } from '@/components/ui/solutionConfig';
 
 const RecursiveFormulaTree: React.FC = () => {
   const [formulas, setFormulas] = useState<FormulaMap>({
@@ -104,215 +27,24 @@ const RecursiveFormulaTree: React.FC = () => {
   const [rootFormula, setRootFormula] = useState<string>('Total_Cost');
   const [showDerivatives, setShowDerivatives] = useState<string | null>(null);
   const [selectedNodeValue, setSelectedNodeValue] = useState<{ node: string; value: string } | null>(null);
+  const [solutions, setSolutions] = useState<SolutionConfiguration[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [selectedSolution, setSelectedSolution] = useState<SolutionConfiguration | null>(null);
 
   useEffect(() => {
     const fetchFormulas = async (): Promise<void> => {
+      setLoading(true);
       const res = await fetch('/api/formulas');
       const data = await res.json();
-      console.log(data.formulas);
+      const solutionConfiguration: SolutionConfiguration[] = data.formulas;
+      setSolutions(solutionConfiguration);
+      setLoading(false);
     };
+
     fetchFormulas();
   }, []);
 
-  // TypeScript Formula Parser (equivalent to Python version)
-  class FormulaParser {
-    private operators: { [key: string]: string } = {
-      '+': 'Add',
-      '-': 'Subtract',
-      '*': 'Multiply',
-      '/': 'Divide',
-      '**': 'Power',
-      '^': 'Power'
-    };
 
-    private tokenize(formula: string): string[] {
-      // Simple tokenizer - splits by operators and parentheses while preserving them
-      const tokens: string[] = [];
-      let current = '';
-      let i = 0;
-
-      while (i < formula.length) {
-        const char = formula[i];
-        const nextChar = formula[i + 1];
-
-        if (char === ' ') {
-          if (current.trim()) {
-            tokens.push(current.trim());
-            current = '';
-          }
-          i++;
-          continue;
-        }
-
-        // Handle two-character operators
-        if (char === '*' && nextChar === '*') {
-          if (current.trim()) {
-            tokens.push(current.trim());
-            current = '';
-          }
-          tokens.push('**');
-          i += 2;
-          continue;
-        }
-
-        // Handle single-character operators and parentheses
-        if (['+', '-', '*', '/', '^', '(', ')'].includes(char)) {
-          if (current.trim()) {
-            tokens.push(current.trim());
-            current = '';
-          }
-          tokens.push(char);
-          i++;
-          continue;
-        }
-
-        current += char;
-        i++;
-      }
-
-      if (current.trim()) {
-        tokens.push(current.trim());
-      }
-
-      return tokens.filter(token => token.length > 0);
-    }
-
-    private parseExpression(tokens: string[], pos: { value: number }): ASTNode | string | number {
-      return this.parseAddSub(tokens, pos);
-    }
-
-    private parseAddSub(tokens: string[], pos: { value: number }): ASTNode | string | number {
-      let left = this.parseMulDiv(tokens, pos);
-
-      while (pos.value < tokens.length && (tokens[pos.value] === '+' || tokens[pos.value] === '-')) {
-        const op = tokens[pos.value];
-        pos.value++;
-        const right = this.parseMulDiv(tokens, pos);
-        left = {
-          type: this.operators[op],
-          left,
-          right
-        };
-      }
-
-      return left;
-    }
-
-    private parseMulDiv(tokens: string[], pos: { value: number }): ASTNode | string | number {
-      let left = this.parsePower(tokens, pos);
-
-      while (pos.value < tokens.length && (tokens[pos.value] === '*' || tokens[pos.value] === '/')) {
-        const op = tokens[pos.value];
-        pos.value++;
-        const right = this.parsePower(tokens, pos);
-        left = {
-          type: this.operators[op],
-          left,
-          right
-        };
-      }
-
-      return left;
-    }
-
-    private parsePower(tokens: string[], pos: { value: number }): ASTNode | string | number {
-      let left = this.parseUnary(tokens, pos);
-
-      while (pos.value < tokens.length && (tokens[pos.value] === '**' || tokens[pos.value] === '^')) {
-        const op = tokens[pos.value];
-        pos.value++;
-        const right = this.parseUnary(tokens, pos);
-        left = {
-          type: this.operators[op],
-          left,
-          right
-        };
-      }
-
-      return left;
-    }
-
-    private parseUnary(tokens: string[], pos: { value: number }): ASTNode | string | number {
-      if (pos.value < tokens.length && (tokens[pos.value] === '+' || tokens[pos.value] === '-')) {
-        const op = tokens[pos.value];
-        pos.value++;
-        const operand = this.parseUnary(tokens, pos);
-        return {
-          type: `Unary_${op === '+' ? 'UAdd' : 'USub'}`,
-          operand
-        };
-      }
-
-      return this.parseFactor(tokens, pos);
-    }
-
-    private parseFactor(tokens: string[], pos: { value: number }): ASTNode | string | number {
-      if (pos.value >= tokens.length) {
-        throw new Error('Unexpected end of expression');
-      }
-
-      const token = tokens[pos.value];
-
-      // Handle parentheses
-      if (token === '(') {
-        pos.value++; // consume '('
-        const expr = this.parseExpression(tokens, pos);
-        if (pos.value >= tokens.length || tokens[pos.value] !== ')') {
-          throw new Error('Missing closing parenthesis');
-        }
-        pos.value++; // consume ')'
-        return expr;
-      }
-
-      // Handle numbers
-      if (!isNaN(Number(token))) {
-        pos.value++;
-        return Number(token);
-      }
-
-      // Handle variables/identifiers
-      if (/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(token)) {
-        pos.value++;
-        return token;
-      }
-
-      throw new Error(`Unexpected token: ${token}`);
-    }
-
-    private extractVariables(node: ASTNode | string | number, varsSet: Set<string> = new Set()): Set<string> {
-      if (typeof node === 'string' && /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(node)) {
-        varsSet.add(node);
-      } else if (typeof node === 'object' && node !== null) {
-        if ('left' in node && node.left) {
-          this.extractVariables(node.left, varsSet);
-        }
-        if ('right' in node && node.right) {
-          this.extractVariables(node.right, varsSet);
-        }
-        if ('operand' in node && node.operand) {
-          this.extractVariables(node.operand, varsSet);
-        }
-      }
-      return varsSet;
-    }
-
-    public parseFormulaToAST(formula: string): { ast: ASTNode | string | number; dependencies: Set<string> } {
-      try {
-        const tokens = this.tokenize(formula);
-        const pos = { value: 0 };
-        const ast = this.parseExpression(tokens, pos);
-        
-        if (pos.value < tokens.length) {
-          throw new Error(`Unexpected tokens after expression: ${tokens.slice(pos.value).join(' ')}`);
-        }
-
-        const dependencies = this.extractVariables(ast);
-        return { ast, dependencies };
-      } catch (error) {
-        throw new Error(`Error parsing formula: ${error}`);
-      }
-    }
-  }
 
   // Simple symbolic differentiation
   const differentiate = (expr: string, variable: string): string => {
@@ -1293,6 +1025,175 @@ const RecursiveFormulaTree: React.FC = () => {
       </div>
     );
   };
+const previousUiMain = () =>{
+  return(
+    <div className="max-w-7xl mx-auto p-8">
+    <Card className="border-gray-200 shadow-lg">
+      <CardHeader className="border-b border-gray-100 bg-gray-50/50">
+        <CardTitle className="flex items-center space-x-3 text-2xl font-semibold text-black">
+          <Calculator className="h-7 w-7 text-black" />
+          <span>Formula Management</span>
+        </CardTitle>
+      </CardHeader>
+    <CardContent className="p-8">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+        
+        {/* Formula Management Panel */}
+        <div className="space-y-6">
+          <h3 className="text-xl font-semibold text-black border-b border-gray-200 pb-3">Formula Management</h3>
+          
+          <div className="space-y-3">
+            <Label htmlFor="root-select" className="text-sm font-medium text-gray-700">Root Formula</Label>
+            <select 
+              id="root-select"
+              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-black transition-colors bg-white text-black"
+              value={rootFormula}
+              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setRootFormula(e.target.value)}
+            >
+              {Object.keys(formulas).map((name: string) => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <Label htmlFor="formula-name" className="text-sm font-medium text-gray-700">Add New Formula</Label>
+            <Input
+              id="formula-name"
+              placeholder="Formula name"
+              value={newFormulaName}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewFormulaName(e.target.value)}
+              className="border-gray-300 focus:ring-black focus:border-black"
+            />
+            <Input
+              placeholder="Expression (e.g., A + B * C)"
+              value={newFormulaExpression}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewFormulaExpression(e.target.value)}
+              className="border-gray-300 focus:ring-black focus:border-black"
+            />
+            <Button onClick={addFormula} className="w-full bg-black hover:bg-gray-800 text-white">
+              <Plus className="h-4 w-4 mr-2" />
+              Add Formula
+            </Button>
+          </div>
+
+          <div className="space-y-4">
+            <h4 className="text-lg font-medium text-black border-b border-gray-200 pb-2">Current Formulas</h4>
+            <div className="space-y-3 max-h-80 overflow-y-auto">
+              {Object.entries(formulas).map(([name, expr]: [string, string]) => (
+                <div key={name} className="p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="font-semibold text-black">{name}</div>
+                      <div className="text-sm text-gray-600 mt-1 font-mono">{expr}</div>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowDerivatives(name)}
+                      className="border-gray-300 hover:bg-gray-50"
+                    >
+                      <TrendingUp className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Tree Visualization */}
+        <div className="lg:col-span-2">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold">Dependency Tree</h3>
+            <div className="flex space-x-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setExpandedNodes(new Set())}
+              >
+                <EyeOff className="h-4 w-4 mr-1" />
+                Collapse All
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const allNodes = new Set<string>();
+                  const collectNodes = (node: TreeNode): void => {
+                    allNodes.add(node.name);
+                    node.children?.forEach(collectNodes);
+                  };
+                  collectNodes(tree);
+                  setExpandedNodes(allNodes);
+                }}
+              >
+                <Eye className="h-4 w-4 mr-1" />
+                Expand All
+              </Button>
+            </div>
+          </div>
+
+          <div className="bg-white border rounded-lg p-4 max-h-96 overflow-auto">
+            {rootFormula && tree ? (
+              <TreeNode node={tree} />
+            ) : (
+              <div className="text-center text-gray-500 py-8">
+                Select a root formula to visualize the dependency tree
+              </div>
+            )}
+          </div>
+
+          {/* Legend */}
+          <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+            <h4 className="font-medium mb-2">Legend</h4>
+            <div className="flex flex-wrap gap-3 text-sm">
+              <div className="flex items-center space-x-2">
+                <div className="w-4 h-4 bg-green-100 border border-green-200 rounded"></div>
+                <span>Formula Node</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <div className="w-4 h-4 bg-gray-100 border border-gray-200 rounded"></div>
+                <span>Leaf Variable</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <div className="w-4 h-4 bg-blue-100 border border-blue-300 rounded"></div>
+                <span>Highlighted Path</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <div className="w-4 h-4 bg-red-100 border border-red-200 rounded"></div>
+                <span>Circular Reference</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <TrendingUp className="h-4 w-4 text-purple-600" />
+                <span>Analyze Expression</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </CardContent>
+  </Card>
+
+  {/* Advanced Analysis Modal */}
+  {showDerivatives && (
+    <DerivativesModal
+      formulaName={showDerivatives}
+      onClose={() => setShowDerivatives(null)}
+    />
+  )}
+  </div>
+  )
+}
+const loadingUiMain = () =>{
+  return(
+    <div className="min-h-screen bg-white">
+      <div className="flex justify-center items-center h-screen">
+        <div className="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-gray-900"></div>
+      </div>
+    </div>
+  )
+}
 
   return (
     <div className="min-h-screen bg-white">
@@ -1309,164 +1210,13 @@ const RecursiveFormulaTree: React.FC = () => {
           </div>
         </div>
       </div>
-
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto p-8">
-        <Card className="border-gray-200 shadow-lg">
-          <CardHeader className="border-b border-gray-100 bg-gray-50/50">
-            <CardTitle className="flex items-center space-x-3 text-2xl font-semibold text-black">
-              <Calculator className="h-7 w-7 text-black" />
-              <span>Formula Management</span>
-            </CardTitle>
-          </CardHeader>
-        <CardContent className="p-8">
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-            
-            {/* Formula Management Panel */}
-            <div className="space-y-6">
-              <h3 className="text-xl font-semibold text-black border-b border-gray-200 pb-3">Formula Management</h3>
-              
-              <div className="space-y-3">
-                <Label htmlFor="root-select" className="text-sm font-medium text-gray-700">Root Formula</Label>
-                <select 
-                  id="root-select"
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-black transition-colors bg-white text-black"
-                  value={rootFormula}
-                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setRootFormula(e.target.value)}
-                >
-                  {Object.keys(formulas).map((name: string) => (
-                    <option key={name} value={name}>{name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                <Label htmlFor="formula-name" className="text-sm font-medium text-gray-700">Add New Formula</Label>
-                <Input
-                  id="formula-name"
-                  placeholder="Formula name"
-                  value={newFormulaName}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewFormulaName(e.target.value)}
-                  className="border-gray-300 focus:ring-black focus:border-black"
-                />
-                <Input
-                  placeholder="Expression (e.g., A + B * C)"
-                  value={newFormulaExpression}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewFormulaExpression(e.target.value)}
-                  className="border-gray-300 focus:ring-black focus:border-black"
-                />
-                <Button onClick={addFormula} className="w-full bg-black hover:bg-gray-800 text-white">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Formula
-                </Button>
-              </div>
-
-              <div className="space-y-4">
-                <h4 className="text-lg font-medium text-black border-b border-gray-200 pb-2">Current Formulas</h4>
-                <div className="space-y-3 max-h-80 overflow-y-auto">
-                  {Object.entries(formulas).map(([name, expr]: [string, string]) => (
-                    <div key={name} className="p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className="font-semibold text-black">{name}</div>
-                          <div className="text-sm text-gray-600 mt-1 font-mono">{expr}</div>
-                        </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setShowDerivatives(name)}
-                          className="border-gray-300 hover:bg-gray-50"
-                        >
-                          <TrendingUp className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Tree Visualization */}
-            <div className="lg:col-span-2">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold">Dependency Tree</h3>
-                <div className="flex space-x-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setExpandedNodes(new Set())}
-                  >
-                    <EyeOff className="h-4 w-4 mr-1" />
-                    Collapse All
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      const allNodes = new Set<string>();
-                      const collectNodes = (node: TreeNode): void => {
-                        allNodes.add(node.name);
-                        node.children?.forEach(collectNodes);
-                      };
-                      collectNodes(tree);
-                      setExpandedNodes(allNodes);
-                    }}
-                  >
-                    <Eye className="h-4 w-4 mr-1" />
-                    Expand All
-                  </Button>
-                </div>
-              </div>
-
-              <div className="bg-white border rounded-lg p-4 max-h-96 overflow-auto">
-                {rootFormula && tree ? (
-                  <TreeNode node={tree} />
-                ) : (
-                  <div className="text-center text-gray-500 py-8">
-                    Select a root formula to visualize the dependency tree
-                  </div>
-                )}
-              </div>
-
-              {/* Legend */}
-              <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-                <h4 className="font-medium mb-2">Legend</h4>
-                <div className="flex flex-wrap gap-3 text-sm">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-4 h-4 bg-green-100 border border-green-200 rounded"></div>
-                    <span>Formula Node</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <div className="w-4 h-4 bg-gray-100 border border-gray-200 rounded"></div>
-                    <span>Leaf Variable</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <div className="w-4 h-4 bg-blue-100 border border-blue-300 rounded"></div>
-                    <span>Highlighted Path</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <div className="w-4 h-4 bg-red-100 border border-red-200 rounded"></div>
-                    <span>Circular Reference</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <TrendingUp className="h-4 w-4 text-purple-600" />
-                    <span>Analyze Expression</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Advanced Analysis Modal */}
-      {showDerivatives && (
-        <DerivativesModal
-          formulaName={showDerivatives}
-          onClose={() => setShowDerivatives(null)}
-        />
+      {/* Solution Configuration */}
+      {loading ? loadingUiMain() : 
+      (
+        <SolutionConfigurationPages solutions={solutions} />
       )}
-      </div>
+      {/* Main Content */}
+ 
     </div>
   );
 };
