@@ -1,15 +1,14 @@
 'use client'
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { ChevronDown, ChevronRight, Plus, Trash2, Eye, EyeOff, Calculator, TrendingUp, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Trash2, TrendingUp, X } from 'lucide-react';
 import { SolutionConfiguration } from './type/types';
 import { FormulaMap, ParsedExpression, ASTNode, TreeNode, GraphNode, GraphEdge, ExpressionGraph, DerivativesModalProps, TreeNodeProps } from './type/types';
 import { FormulaParser } from '@/lib/parser';
 import { SolutionConfigurationPages } from '@/components/ui/solutionConfig';
+import { useRouter } from 'next/navigation';
+import { ExampleUsage } from '@/components/formular';
 
 const RecursiveFormulaTree: React.FC = () => {
   const [formulas, setFormulas] = useState<FormulaMap>({
@@ -29,8 +28,7 @@ const RecursiveFormulaTree: React.FC = () => {
   const [selectedNodeValue, setSelectedNodeValue] = useState<{ node: string; value: string } | null>(null);
   const [solutions, setSolutions] = useState<SolutionConfiguration[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
-  const [selectedSolution, setSelectedSolution] = useState<SolutionConfiguration | null>(null);
-
+  const navigate = useRouter();
   useEffect(() => {
     const fetchFormulas = async (): Promise<void> => {
       setLoading(true);
@@ -42,7 +40,7 @@ const RecursiveFormulaTree: React.FC = () => {
     };
 
     fetchFormulas();
-  }, []);
+  }, [navigate]);
 
 
 
@@ -1025,166 +1023,9 @@ const RecursiveFormulaTree: React.FC = () => {
       </div>
     );
   };
-const previousUiMain = () =>{
-  return(
-    <div className="max-w-7xl mx-auto p-8">
-    <Card className="border-gray-200 shadow-lg">
-      <CardHeader className="border-b border-gray-100 bg-gray-50/50">
-        <CardTitle className="flex items-center space-x-3 text-2xl font-semibold text-black">
-          <Calculator className="h-7 w-7 text-black" />
-          <span>Formula Management</span>
-        </CardTitle>
-      </CardHeader>
-    <CardContent className="p-8">
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-        
-        {/* Formula Management Panel */}
-        <div className="space-y-6">
-          <h3 className="text-xl font-semibold text-black border-b border-gray-200 pb-3">Formula Management</h3>
-          
-          <div className="space-y-3">
-            <Label htmlFor="root-select" className="text-sm font-medium text-gray-700">Root Formula</Label>
-            <select 
-              id="root-select"
-              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-black transition-colors bg-white text-black"
-              value={rootFormula}
-              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setRootFormula(e.target.value)}
-            >
-              {Object.keys(formulas).map((name: string) => (
-                <option key={name} value={name}>{name}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="space-y-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-            <Label htmlFor="formula-name" className="text-sm font-medium text-gray-700">Add New Formula</Label>
-            <Input
-              id="formula-name"
-              placeholder="Formula name"
-              value={newFormulaName}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewFormulaName(e.target.value)}
-              className="border-gray-300 focus:ring-black focus:border-black"
-            />
-            <Input
-              placeholder="Expression (e.g., A + B * C)"
-              value={newFormulaExpression}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewFormulaExpression(e.target.value)}
-              className="border-gray-300 focus:ring-black focus:border-black"
-            />
-            <Button onClick={addFormula} className="w-full bg-black hover:bg-gray-800 text-white">
-              <Plus className="h-4 w-4 mr-2" />
-              Add Formula
-            </Button>
-          </div>
-
-          <div className="space-y-4">
-            <h4 className="text-lg font-medium text-black border-b border-gray-200 pb-2">Current Formulas</h4>
-            <div className="space-y-3 max-h-80 overflow-y-auto">
-              {Object.entries(formulas).map(([name, expr]: [string, string]) => (
-                <div key={name} className="p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="font-semibold text-black">{name}</div>
-                      <div className="text-sm text-gray-600 mt-1 font-mono">{expr}</div>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowDerivatives(name)}
-                      className="border-gray-300 hover:bg-gray-50"
-                    >
-                      <TrendingUp className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Tree Visualization */}
-        <div className="lg:col-span-2">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold">Dependency Tree</h3>
-            <div className="flex space-x-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setExpandedNodes(new Set())}
-              >
-                <EyeOff className="h-4 w-4 mr-1" />
-                Collapse All
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  const allNodes = new Set<string>();
-                  const collectNodes = (node: TreeNode): void => {
-                    allNodes.add(node.name);
-                    node.children?.forEach(collectNodes);
-                  };
-                  collectNodes(tree);
-                  setExpandedNodes(allNodes);
-                }}
-              >
-                <Eye className="h-4 w-4 mr-1" />
-                Expand All
-              </Button>
-            </div>
-          </div>
-
-          <div className="bg-white border rounded-lg p-4 max-h-96 overflow-auto">
-            {rootFormula && tree ? (
-              <TreeNode node={tree} />
-            ) : (
-              <div className="text-center text-gray-500 py-8">
-                Select a root formula to visualize the dependency tree
-              </div>
-            )}
-          </div>
-
-          {/* Legend */}
-          <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-            <h4 className="font-medium mb-2">Legend</h4>
-            <div className="flex flex-wrap gap-3 text-sm">
-              <div className="flex items-center space-x-2">
-                <div className="w-4 h-4 bg-green-100 border border-green-200 rounded"></div>
-                <span>Formula Node</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <div className="w-4 h-4 bg-gray-100 border border-gray-200 rounded"></div>
-                <span>Leaf Variable</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <div className="w-4 h-4 bg-blue-100 border border-blue-300 rounded"></div>
-                <span>Highlighted Path</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <div className="w-4 h-4 bg-red-100 border border-red-200 rounded"></div>
-                <span>Circular Reference</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <TrendingUp className="h-4 w-4 text-purple-600" />
-                <span>Analyze Expression</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </CardContent>
-  </Card>
-
-  {/* Advanced Analysis Modal */}
-  {showDerivatives && (
-    <DerivativesModal
-      formulaName={showDerivatives}
-      onClose={() => setShowDerivatives(null)}
-    />
-  )}
-  </div>
-  )
-}
+  // const previousUiMain = () => {
+  //   return <FormulaManagement />;
+  // };
 const loadingUiMain = () =>{
   return(
     <div className="min-h-screen bg-white">
@@ -1194,7 +1035,6 @@ const loadingUiMain = () =>{
     </div>
   )
 }
-
   return (
     <div className="min-h-screen bg-white">
       {/* Header Section */}
