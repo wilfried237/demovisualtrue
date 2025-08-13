@@ -1,8 +1,7 @@
 // lib/mongodb.ts
-import { url } from '@/app/api/formulas/route';
 import { MongoClient } from 'mongodb';
 
-const uri = url;
+const uri = process.env.MONGODB_URI || "mongodb+srv://novazure:novazure@cluster0.swbkk5m.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
 let client: MongoClient;
 let clientPromise: Promise<MongoClient>;
 
@@ -13,7 +12,7 @@ if (!uri) {
 if (process.env.NODE_ENV === 'development') {
   // In development mode, use a global variable so that the value
   // is preserved across module reloads caused by HMR (Hot Module Replacement).
-  let globalWithMongo = global as typeof globalThis & {
+  const globalWithMongo = global as typeof globalThis & {
     _mongoClientPromise?: Promise<MongoClient>;
   };
 

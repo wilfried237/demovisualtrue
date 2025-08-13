@@ -28,7 +28,10 @@ interface Category {
   interface Parameter {
     _id?: string; // ObjectId (optional)
     category: Category;
-    conditional_rules: any[]; // Array of conditional rules (type not specified in schema)
+    conditional_rules: {
+        condition: string;
+        value: string;
+    }[]; // Array of conditional rules (type not specified in schema)
     description: string;
     display_type: string;
     dropdown_options: DropdownOption[];

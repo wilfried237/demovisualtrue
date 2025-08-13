@@ -1,7 +1,7 @@
 import { NextResponse, NextRequest } from "next/server";
 import { MongoClient, ObjectId } from "mongodb";
-import { url } from "../formulas/route";
 
+const url = process.env.MONGODB_URI || "mongodb+srv://novazure:novazure@cluster0.swbkk5m.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
 const client = new MongoClient(url);
 const db = client.db('platform_db');
 const collection = db.collection('technologies');
